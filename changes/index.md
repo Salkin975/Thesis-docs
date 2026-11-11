@@ -17,81 +17,10 @@ The changes let the worker filter and build buckets directly on the columns. The
 The tile format, the renderer and the shaders do not change. MVT tiles, and every layer that cannot use the
 columnar path, run the existing code unchanged.
 
-## Gains against `main`
+## Results
 
-Worker busy time without garbage collection in a recorded 42 s map session (z0 to z16), replayed in Chromium,
-10 runs per variant. Lower is better, 95 % confidence interval in parentheses. `main` is GL JS `bb3895408` with
-`@maplibre/mlt` 1.3.0.
-
-| Style | MLT ÷ MVT on `main` | MLT ÷ MVT with the changes | pre-tessellated MLT ÷ MVT with the changes | MLT: speedup against `main` | pre-tessellated MLT: speedup against `main` |
-|---|---|---|---|---|---|
-| maptiler-basic | 1.30× (1.25-1.32) | 0.93× (0.92-0.94) | 0.77× (0.76-0.79) | 1.41× (1.39-1.44) | 1.75× (1.70-1.78) |
-| osm-bright | 1.22× (1.21-1.23) | 0.89× (0.85-0.96) | 0.80× (0.75-0.85) | 1.35× (1.32-1.36) | 1.55× (1.51-1.66) |
-| positron | – | 0.92× (0.90-0.94) | 0.81× (0.79-0.82) | – | – |
-
-Positron was only run without `main`, so it has no speedup. MVT costs the same with and without the changes
-(0.99×, CI 0.95-1.01, on maptiler-basic).
-
-![Worker busy time without GC relative to MVT on main, maptiler-basic](benchmarks/session-trace/20261107-171557/plots/z0-16-40sek-ratio.png)
-
-*maptiler-basic, every run of the batch as a dot, the median as a bar. `dist` is GL JS with the changes,
-`main--mlt-1-3-0` is `main` with `@maplibre/mlt` 1.3.0; all ratios are against MVT on `main` in the same round.
-Full report: [run 20261107-171557](benchmarks/session-trace/20261107-171557/report.md).*
-
-Where the time and memory go, per maptiler-basic session (medians):
-
-| | MVT | MLT, `main` | MLT, changes | pre-tessellated MLT, `main` | pre-tessellated MLT, changes |
-|---|---|---|---|---|---|
-| worker busy time without GC | 1,897 ms | 2,470 ms | 1,748 ms | 2,526 ms | **1,440 ms** |
-| tile decoding | 156 ms | 426 ms | 113 ms | 478 ms | 148 ms |
-| building fill and line buckets, incl. earcut | 765 ms | 764 ms | 505 ms | 770 ms | **272 ms** |
-| memory freed by the worker's GCs | 1,439 MB | 1,627 MB | 1,059 MB | 1,652 MB | 555 MB |
-| peak worker heap | 67 MB | 201 MB | 61 MB | 188 MB | **45 MB** |
-
-![JS heap of the GL JS worker and the main thread over the session, maptiler-basic](benchmarks/session-trace/20261107-171557/plots/z0-16-40sek-heap.png)
-
-*Worker heap over the 42 s session (left): on `main` (dashed) MLT climbs to about 175 MB while MVT stays
-below 75 MB; with the changes (solid) every format stays at or below MVT.*
-
-<details markdown>
-<summary>Worker time by phase, all six variants</summary>
-
-![Worker time by phase, maptiler-basic](benchmarks/session-trace/20261107-171557/plots/z0-16-40sek-phases.png)
-
-*Median sampled self time per phase. The `main` bars for `mlt decode`, `mlt access` and `earcut` are where
-the changes save most.*
-
-</details>
-
-Four things stand out:
-
-- On `main`, MLT costs 1.22-1.30× the worker time of MVT, and pre-tessellated tiles bring nothing, because
-  their triangles are thrown away and recomputed with earcut. With the changes, MLT is the cheaper format, and
-  pre-tessellated MLT the cheapest.
-- Tile decoding drops from 426 to 113 ms. A layer, and inside it a column, is only decoded when something
-  reads it ([lazy decoding](03-lazy-decoding.md)), and the decoder's largest costs, found by profiling, were
-  removed ([decode performance](05-decode-performance.md)).
-- The largest single gain is in building fill buckets: pre-tessellated triangles are copied into the vertex
-  arrays as they are, and plain tiles run earcut straight on the vertex buffer
-  ([fill bucket](09-fill-bucket.md)). Building fill and line buckets takes 272 ms for pre-tessellated MLT, against 765 ms for MVT.
-- On `main` a loaded MLT tile keeps every decoded column, three times the peak worker heap of MVT. The worker
-  now drops the decoded columns after each parse, and the peak heap falls below MVT's.
-
-The batches ran with the worker timing log switched on, which costs about 1.5-3 % of worker time in every
-format. A batch with the log off has not been run yet. How each number was measured is on
-[how it was measured](13-measuring.md).
-
-The tile-spec changes alone, timed in Node from the unzipped tile bytes to the point where GL JS would start
-writing vertices (decoding, every style-layer filter once, and the columns the bucket reads), on 82 tiles
-around Cologne per style:
-
-| Style | Filter jobs | MLT `main` ÷ MVT | MLT ÷ MVT | MLT ÷ MLT `main` |
-|---|---|---|---|---|
-| maptiler-basic | 2,522 | 1.62× | 0.30× | 0.19× |
-| osm-bright | 5,894 | 1.41× | 0.25× | 0.17× |
-| positron | 2,013 | 1.64× | 0.32× | 0.20× |
-
-Every filter job keeps the same features in all three formats, compared by feature id.
+The worker time, memory, tile sizes and bundle sizes, measured against `main`, are on the overview's
+[results](../overview/results.md) page. How they were measured is on [how it was measured](13-measuring.md).
 
 ## How the changes build on each other
 

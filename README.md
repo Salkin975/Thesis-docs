@@ -5,7 +5,7 @@ published together at <https://salkin975.github.io/Thesis-docs/>:
 
 | Site | Source | Config | Published at |
 |---|---|---|---|
-| The changes, one page per change, with the benchmark reports | `changes/` | `mkdocs.public.yml` | `/` |
+| The changes, one page per change | `changes/` | `mkdocs.public.yml` | `/` |
 | The overview: the architecture in a few pages | `overview/` | `mkdocs.overview.yml` | `/overview/` |
 
 The proposals themselves are the upstream issues

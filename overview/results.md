@@ -69,16 +69,6 @@ the GL JS changes add:
 *Worker heap over the 42 s session (left), 1 s rolling mean: on `main` (dashed) MLT climbs to about 140 MB
 while MVT stays below 45 MB; with the changes (solid) every format stays within MVT's range.*
 
-<details markdown>
-<summary>Worker time by phase, all six variants</summary>
-
-![Worker time by phase, maptiler-basic](img/session-phases.png)
-
-*Median sampled self time per phase. The `main` bars for `mlt decode`, `mlt access`, `mlt facade` and
-`bucket fill row`, and `earcut` for pre-tessellated tiles, are where the changes save most.*
-
-</details>
-
 | Gain | Comes from |
 |---|---|
 | decoding 196 → 110 ms | lazy layers and columns: a layer or column no style layer reads is not decoded. The decoder fixes are in both builds; with 1.3.0, `main` spent 426 ms here (7 November) |
@@ -132,16 +122,17 @@ wait.
 
 Both packages built from their committed trees at the baseline and at the head of each stack
 (`@maplibre/mlt` `71f20ee8` → `feat5-decode-performance`, GL JS `bb3895408` with `@maplibre/mlt` 1.3.0 →
-`gl7-performance-optimization` with the tile-spec head). Sizes in bytes; gzip at the default level, the way
-GL JS's `build/check-bundle-size.ts` measures its bundles.
+`gl7-performance-optimization` with the tile-spec head). The GL JS head is built without the benchmark timing
+log (`worker_timing.ts` and its calls taken out), which is not part of the proposal. Sizes in bytes; gzip at
+the default level, the way GL JS's `build/check-bundle-size.ts` measures its bundles.
 
 **What a GL JS user downloads.** The production bundles, `npm run build-prod`:
 
 | Bundle | | `main` | changes | difference |
 |---|---|---|---|---|
-| `maplibre-gl-worker.mjs` | minified | 519,352 | 554,889 | +35,537 (+6.8 %) |
-| | gzip | 148,324 | 159,359 | **+11,035 (+7.4 %)** |
-| | brotli | 121,465 | 130,296 | +8,831 (+7.3 %) |
+| `maplibre-gl-worker.mjs` | minified | 519,352 | 553,404 | +34,052 (+6.6 %) |
+| | gzip | 148,324 | 158,855 | **+10,531 (+7.1 %)** |
+| | brotli | 121,465 | 129,745 | +8,280 (+6.8 %) |
 | `maplibre-gl.mjs` | minified | 1,107,256 | 1,141,124 | +33,868 (+3.1 %) |
 | | gzip | 296,233 | 306,613 | **+10,380 (+3.5 %)** |
 | | brotli | 241,216 | 249,282 | +8,066 (+3.3 %) |
@@ -156,12 +147,10 @@ Where the growth of the worker bundle comes from, minified bytes split by source
 | `@maplibre/mlt` | 65,852 | 87,086 | +21,234 |
 | GL JS `src/data/bucket/columnar/` | 0 | 9,372 | +9,372 |
 | GL JS `src/source/vector_tile_mlt.ts` | 886 | 3,356 | +2,470 |
-| GL JS `src/source/worker_timing.ts` | 0 | 1,172 | +1,172 |
-| GL JS, the rest of `src/` (bucket splits, dispatch) | 240,731 | 241,969 | +1,238 |
+| GL JS, the rest of `src/` (bucket splits, dispatch) | 240,731 | 241,671 | +940 |
 | other dependencies | 210,797 | 210,802 | +5 |
 
-About 60 % of the growth is the tile spec, about 40 % GL JS. `worker_timing.ts` is the benchmark timing log
-(off by default); without it the worker bundle grows by about 34 KB minified.
+About 60 % of the growth is the tile spec, about 40 % GL JS.
 
 **`@maplibre/mlt` on its own.** The whole public API bundled with tree shaking and minified (dependencies
 external), and what the npm package ships in `dist/`:
@@ -181,10 +170,11 @@ package and not 81-102 KB.
 | Package | before | after | difference | per change |
 |---|---|---|---|---|
 | `@maplibre/mlt` `ts/src/` | 11,462 | 13,420 | +1,958 (+17.1 %) | selection vectors +354, filter engine +1,022, lazy decoding +363, adapter primitives +94, decode performance +125 |
-| GL JS `src/` | 72,780 | 74,173 | +1,393 (+1.9 %) | facade +92, dispatch +42, populate pipeline +120, fill bucket +693, line bucket +74, symbol bucket +98, worker performance +274 |
+| GL JS `src/` | 72,780 | 74,025 | +1,245 (+1.7 %) | facade +92, dispatch +42, populate pipeline +120, fill bucket +693, line bucket +74, symbol bucket +98, worker performance +126 |
 
-The filter engine is half of the tile-spec growth, the fill bucket half of the GL JS growth
-(`columnar_mesh_arrays.ts` alone is 476 lines). Tests and benchmarks add another 1,949 lines to the tile spec
+The filter engine is half of the tile-spec growth, the fill bucket more than half of the GL JS growth
+(`columnar_mesh_arrays.ts` alone is 476 lines). The GL JS head is counted without the benchmark timing log
+(148 lines), as for the bundles. Tests and benchmarks add another 1,949 lines to the tile spec
 and 1,833 to GL JS.
 
 The GL JS baseline uses `@maplibre/mlt` 1.3.0 from npm, the tile-spec baseline is `71f20ee8`, as in the
@@ -217,5 +207,3 @@ measuring are on [how it was measured](../changes/13-measuring.md).
   than the row filter, because planning and resolving kernels is a fixed cost per filter.
 - **Main-thread heap.** At the end of the replay the main thread holds about 2-5 MB more with MLT than with
   MVT, with wide confidence intervals; cause unknown.
-
-All batches and their plots are in the [benchmark reports](../changes/benchmarks/index.md).
