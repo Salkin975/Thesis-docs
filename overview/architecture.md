@@ -2,8 +2,6 @@
 
 ## Before: rows first
 
-On `main`, an MLT tile is converted to rows when it is loaded, and everything after that is the MVT path.
-
 ```mermaid
 flowchart LR
     B["MLT tile bytes"] --> D["decodeTile()<br/>every column<br/>of every layer"]
@@ -14,13 +12,10 @@ flowchart LR
     D -.->|"kept while<br/>the tile is loaded"| M["all decoded columns<br/>in worker memory"]
 ```
 
-Every feature is built, including the ones the filter drops. A pre-tessellated tile pays for its triangles
-twice: once to decode them, once to recompute them with earcut.
+- every feature is built, also the ones the filter drops
+- pre-tessellated tiles pay twice: triangles decoded, then recomputed by earcut
 
 ## After: columns until the write
-
-Each style layer of an MLT tile now goes through these steps. The row bucket's own code still writes the
-vertices, sorts and indexes, so both paths draw the same features.
 
 ```mermaid
 flowchart TD
@@ -32,7 +27,7 @@ flowchart TD
     select["Select<br/>cached filter plan<br/>run on the columns"]
     cols["Lazy columns<br/>decoded on first access"]
     prepare["Prepare<br/>features for the<br/>selected rows only"]
-    write["Write and index<br/>inherited from<br/>the row bucket"]
+    write["Write and index<br/>the row bucket's code"]
     release["Release<br/>decoded columns dropped<br/>after the parse"]
 
     bytes --> scan --> layer --> dispatch
@@ -44,70 +39,64 @@ flowchart TD
     row --> release
 ```
 
-| Step | Where | What it does |
+| Step | Where | What |
 |---|---|---|
-| Block scan | `@maplibre/mlt` `scanLayerBlocks()` | finds each layer's name and bytes without decoding a column |
-| Lazy layer | GL JS `MLTVectorTile` | a getter per layer that calls `decodeTile()` on first read and then turns into a plain property |
-| Dispatch | GL JS `createBucket()` → `isColumnarBucketSupported()` | columnar bucket if the tile is MLT and the filter can be planned at this zoom, row bucket otherwise |
-| Select | `@maplibre/mlt` `filterFeatureTable()` | plans the filter once per filter (and zoom, if it reads `["zoom"]`), runs it on the columns, returns a selection vector |
-| Lazy columns | `@maplibre/mlt` `FeatureTable` | a column's data is decoded the first time the filter or the bucket reads it |
-| Prepare | GL JS `columnar_populate.ts` | a `BucketFeature` per selected row: properties as a row view, id through `promoteId`, sort key only if data-driven |
-| Write and index | GL JS row buckets, `addBucketFeatures()` | sorting, pattern and dash deferral, vertex writing, `FeatureIndex` insert, unchanged code |
+| Block scan | `@maplibre/mlt` `scanLayerBlocks()` | each layer's name and bytes, no column decoded |
+| Lazy layer | GL JS `MLTVectorTile` | getter per layer: `decodeTile()` on first read, then a plain property |
+| Dispatch | GL JS `createBucket()` → `isColumnarBucketSupported()` | columnar bucket if MLT and the filter plans at this zoom, else row bucket |
+| Select | `@maplibre/mlt` `filterFeatureTable()` | filter planned once, run on the columns, returns a selection vector |
+| Lazy columns | `@maplibre/mlt` `FeatureTable` | a column's data decoded on first read |
+| Prepare | GL JS `columnar_populate.ts` | a `BucketFeature` per selected row; properties as a row view |
+| Write and index | GL JS row buckets, `addBucketFeatures()` | sorting, deferral, vertices, `FeatureIndex`: unchanged code |
 | Release | GL JS `WorkerTile.parse()` | `releaseDecodedColumns()` after the last `addFeatures()` |
 
-The fill bucket replaces only the geometry part of the write: it copies pre-tessellated triangles, or runs
-earcut on the vertex buffer, and gives the spatial index bounding boxes. Everything else it inherits.
+- both paths write through the same row-bucket code → same features drawn
+- fill bucket only: own geometry write (triangles copied, or earcut on the vertex buffer), bounding boxes for
+  the index
 
 ## Who owns what
 
-The split follows one rule: what is MLT format knowledge lives in `@maplibre/mlt`, what is GL JS knowledge
-lives in GL JS.
-
 ![](img/system-context.drawio)
 
-*System context. GL JS loads the tiles and draws them; the tile spec decodes lazily and runs the filters on
-the columns; the style spec still defines what a filter means.*
+*GL JS loads and draws; the tile spec decodes lazily and filters on the columns; the style spec defines what a
+filter means.*
 
-| `@maplibre/mlt` owns | GL JS owns |
+| `@maplibre/mlt`: format knowledge | GL JS: renderer knowledge |
 |---|---|
-| finding layers in the bytes, lazy decoding, releasing columns | the `VectorTileLike` facade, the lazy layer getter, the geometry-type mapping |
-| the filter engine: planning, the plan cache, execution, the "can this filter be planned" gate | the choice of bucket per style layer, and handing it the right input |
-| selection vectors and their algebra | turning selected rows into bucket features |
-| the row view over a feature's properties, with MVT-compatible 64-bit values | writing vertices, sorting, indexing, transfer to the main thread |
+| finding layers, lazy decoding, releasing columns | `VectorTileLike` facade, lazy layer getter, geometry-type mapping |
+| filter engine: planning, plan cache, execution, the "plannable?" gate | bucket choice per style layer, the right input for it |
+| selection vectors and their algebra | selected rows → bucket features |
+| row view over a feature's properties, MVT-compatible 64-bit values | vertices, sorting, indexing, transfer to the main thread |
 
-The package's new pieces are useful to any consumer that reads MLT: a tile inspector, a diff tool or another
-renderer can filter and read rows the same way.
+- the package's new pieces work for any MLT consumer: inspector, diff tool, other renderer
 
 ## The contract between the two
-
-GL JS calls the package through a small surface. Everything else it reads is the existing `FeatureTable`.
 
 | Call | Used by GL JS for |
 |---|---|
 | `scanLayerBlocks(tile)` | the facade's lazy layers |
-| `decodeTile(block.bytes)` | decoding one layer on first read, headers only |
-| `isColumnarBucketSupported(encoding, filter, zoom, layerId)` | `createBucket()` of fill, line and symbol style layers |
+| `decodeTile(block.bytes)` | one layer on first read, headers only |
+| `isColumnarBucketSupported(encoding, filter, zoom, layerId)` | `createBucket()` of fill, line, symbol |
 | `filterFeatureTable(table, filter, zoom)` | the select step |
-| `unionSelectionVectors()`, `intersectSelectionVectors()`, `geometryVector.filter(type)` | narrowing the selection by geometry type (line bucket) |
-| `createRowView(table, row)` | `feature.properties`, with 64-bit values rounded as MVT rounds them |
+| `unionSelectionVectors()`, `intersectSelectionVectors()`, `geometryVector.filter(type)` | narrowing by geometry type (line bucket) |
+| `createRowView(table, row)` | `feature.properties`, 64-bit values rounded as MVT does |
 | `FeatureTable.releaseDecodedColumns()` | the release at the end of `parse()` |
 
-`isColumnarBucketSupported()` and `filterFeatureTable()` answer from the same cached plan, so dispatch and
-select cannot disagree. If they do, `select` throws rather than silently falling back.
+- dispatch and select read the same cached plan → cannot disagree; if they do, select throws
 
 ## The tile's memory over its life
 
 | Moment | Holds |
 |---|---|
-| loaded | the tile bytes, layer names and byte ranges |
+| loaded | tile bytes, layer names and byte ranges |
 | a layer read | that layer's column headers and offsets |
-| during the parse | the columns the filters and buckets read |
-| after the parse | headers and offsets again, about 29 KB per tile instead of about 500 KB |
-| reload | the columns decoded again from the bytes, about 2.6 ms per tile for all of them |
+| during the parse | the columns filters and buckets read |
+| after the parse | headers and offsets: about 29 KB per tile instead of about 500 KB |
+| reload | columns decoded again from the bytes: about 2.6 ms per tile for all of them |
 
-On the main thread, `queryRenderedFeatures` reads the raw tile through its own `MLTVectorTile` with copied
-properties, so returned features are plain objects that do not keep columns alive.
+- `queryRenderedFeatures` (main thread): its own `MLTVectorTile` with copied properties → returned features
+  keep no columns alive
 
 Detail: [MLT facade](../changes/06-mlt-facade.md), [dispatch](../changes/07-dispatch.md),
-[populate pipeline](../changes/08-populate-pipeline.md), and the walk-through of one layer end to end on the
-[explainer overview](../changes/index.md#one-layer-end-to-end).
+[populate pipeline](../changes/08-populate-pipeline.md),
+[one layer end to end](../changes/index.md#one-layer-end-to-end).

@@ -2,71 +2,79 @@
 
 ## The problem
 
-GL JS reads an MLT tile through `MLTVectorTile`. On `main` its constructor decodes every column of every layer
-and calls `getFeatures()` on each layer, which builds a JavaScript object with copied properties for every
-feature. From there an MLT tile takes the MVT path: the style filter runs per feature as a generic
-expression, every polygon is triangulated with earcut, and the decoded columns stay in memory for as long as
-the tile is loaded.
+GL JS `main` turns an MLT tile back into rows before it draws anything:
 
-So the format's columnar layout is turned back into rows before anything is drawn. With `@maplibre/mlt`
-1.3.0, MLT costs **1.22-1.30× the worker time of MVT** and reaches about **three times its peak worker
-heap**. Pre-tessellated tiles bring nothing, because their triangles are thrown away and computed again.
+- every column of every layer is decoded
+- every feature becomes a JavaScript object with copied properties
+- the style filter runs per feature, as a generic expression
+- every polygon goes through earcut, pre-tessellated ones too
+- the decoded columns stay in memory while the tile is loaded
+
+With `@maplibre/mlt` 1.3.0:
+
+- worker time: **1.22-1.30× MVT**
+- peak worker heap: **about 3× MVT**
+- pre-tessellated tiles: **no gain**, their triangles are recomputed
 
 ## The idea
 
-Let the worker filter and build buckets on the columns, and decode only what it reads:
-
-- A style filter is planned once and evaluated per tile as a scan over typed columns. Its result is a
-  selection vector, "which rows", and only those rows ever become features.
-- Layers, columns and properties are decoded on first read. A layer no style layer draws is never decoded
-  past its name.
-- Pre-tessellated polygons are copied into the vertex arrays as they are. Plain polygons run earcut on the
-  vertex buffer, without a `Point` per vertex.
-- After each parse the worker gives the decoded columns back.
+| Step | On `main` | With the changes |
+|---|---|---|
+| decode | every column of every layer | only the layers and columns that are read |
+| filter | per feature, generic expression | planned once, a scan over typed columns |
+| features | an object for every row | only the selected rows, properties as row views |
+| polygons | earcut, pre-tessellated tiles too | triangles copied; earcut on the vertex buffer |
+| after the parse | all decoded columns kept | decoded columns released |
 
 ## The result
 
-Worker busy time without GC in a recorded 42 s map session (z0 to z16), replayed in Chromium, 10 runs per
-variant, against MVT:
+```mermaid
+xychart-beta
+    title "Worker time relative to MVT, maptiler-basic (lower is better)"
+    x-axis ["MLT today", "MVT", "MLT, changes", "pre-tess. MLT, changes"]
+    y-axis "× MVT" 0 --> 1.4
+    bar [1.30, 1.00, 0.91, 0.74]
+```
 
-| Style | MLT, `main` with 1.3.0 | MLT, `main` with the tile-spec changes only | MLT with all changes | pre-tessellated MLT with all changes |
-|---|---|---|---|---|
-| maptiler-basic | 1.30× | 1.17× | 0.91× | 0.74× |
-| osm-bright | 1.22× | 1.12× | 0.91× | 0.74× |
-| positron | not run | 1.19× | 0.92× | 0.78× |
+| Worker time ÷ MVT | maptiler-basic | osm-bright | positron |
+|---|---|---|---|
+| MLT today (`main`, `@maplibre/mlt` 1.3.0) | 1.30× | 1.22× | not run |
+| MLT with the changes | 0.91× | 0.91× | 0.92× |
+| pre-tessellated MLT with the changes | 0.74× | 0.74× | 0.78× |
+| MVT with the changes | 1.00× | 1.01× | 0.99× |
 
-The first column is from 7 November batches on a Linux laptop, the other three from batches on 10 November on
-a Windows workstation; ratios are only compared inside one batch.
+- MLT: **about 9 % less** worker time than MVT, pre-tessellated MLT **about 25 % less**
+- MVT: unchanged
+- peak worker heap, maptiler-basic: **173 → 61 MB** (MVT 80 MB)
+- cost: worker bundle **+10.5 KB gzip (+7.1 %)**, main bundle +10.4 KB (+3.5 %), about 60 % of it `@maplibre/mlt`
+- "MLT today": 7 November, Linux laptop; the other rows: 10 November, Windows workstation; every ratio
+  formed inside one batch
 
-The tile-spec changes alone leave MLT slower than MVT, because GL JS `main` still builds a feature object per
-row. With the GL JS changes MLT becomes the cheaper format and pre-tessellated MLT the cheapest. The peak worker
-heap on maptiler-basic falls from 173 MB to 61 MB (MVT: 64-80 MB; 201 MB on `main` with 1.3.0).
+Details, tile sizes and bandwidth: [results](results.md).
 
-The price is code size: the gzipped worker bundle grows by 11 KB (+7.4 %), the main bundle by 10 KB (+3.5 %),
-about 60 % of it from `@maplibre/mlt`. The breakdown of both is on [results](results.md).
-
-## What changes, and what does not
+## What changes, what does not
 
 | Changes | Does not change |
 |---|---|
-| `@maplibre/mlt`: selection vectors, a columnar filter engine, lazy column decoding, adapter primitives, decoder speedups | the MLT format, and the tiles the `main` decoder reads |
-| GL JS worker: a lazy MLT facade, per-layer dispatch, columnar fill, line and symbol buckets | the renderer, the shaders, the main thread |
-| `FillBucket`, `LineBucket`, `SymbolBucket`: `populate()` split into protected methods, lines moved, not rewritten | MVT tiles, which run the existing code unchanged |
-| | circle, heatmap and fill-extrusion layers, which keep the row path |
+| `@maplibre/mlt`: selection vectors, filter engine, lazy decoding, adapter primitives, decoder speedups | the MLT format; the tiles the `main` decoder reads |
+| GL JS worker: lazy MLT facade, per-layer dispatch, columnar fill, line and symbol buckets | renderer, shaders, main thread |
+| `FillBucket`, `LineBucket`, `SymbolBucket`: `populate()` split into protected methods | MVT tiles: the existing code, unchanged |
+| | circle, heatmap, fill-extrusion: row path |
 
-A style layer whose filter the engine cannot plan falls back to its row bucket on its own, with one warning.
-The other layers of the tile stay columnar.
+- filter the engine cannot plan → that style layer falls back to its row bucket, one warning
+- the other layers of the tile stay columnar
 
-## Reading this site
+## The pages
 
-| Page | Answers |
+| Page | Shows |
 |---|---|
-| [How a tile is parsed](architecture.md) | the worker's path through a tile, before and after, and what each package owns |
-| [@maplibre/mlt](mlt-package.md) | what the package gains, its new API and what behaves differently |
-| [MapLibre GL JS](gl-js.md) | what changes in the worker, and which existing files are touched |
-| [Results](results.md) | where the time and memory go, how it was measured, the limits |
-| [Decisions and open questions](decisions.md) | the rules behind the design, the trade-offs, what is still open, the PR stacks |
+| [How a tile is parsed](architecture.md) | the worker's path before and after, who owns what |
+| [@maplibre/mlt](mlt-package.md) | the five package changes, new API, behaviour changes |
+| [MapLibre GL JS](gl-js.md) | facade, dispatch, buckets, touched files |
+| [Results](results.md) | time, memory, tile size, bandwidth, bundle size, limits |
+| [Decisions and open questions](decisions.md) | rules, trade-offs, rejected ideas, open questions, branches |
+| [Review feedback](feedback.md) | the answers to the first review, with class and sequence diagrams |
 
-Each page links to the explainer page of every change, which has the detail, the measurements and the code
-([all explainer pages](../changes/index.md)). The full proposals are the two RFCs,
-[`@maplibre/mlt`](https://github.com/maplibre/maplibre-tile-spec/issues/2010) and [GL JS](https://github.com/maplibre/maplibre-gl-js/issues/8985).
+- one explainer page per change: [all explainer pages](../changes/index.md)
+- RFCs: [`@maplibre/mlt`](https://github.com/maplibre/maplibre-tile-spec/issues/2010),
+  [GL JS](https://github.com/maplibre/maplibre-gl-js/issues/8985)

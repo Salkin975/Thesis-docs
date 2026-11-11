@@ -1,61 +1,68 @@
 # Decisions and open questions
 
-## The rules behind the design
+## Rules
 
-| Rule | Why |
-|---|---|
-| **Same result as MVT.** | A columnar path that draws different features is a bug, not an optimization. The style spec's filter tests run against the engine, the benchmarks compare selected features by id, and the fill output is compared with `FillBucket`'s triangle by triangle. |
-| **A whole filter or none.** | A partly applied filter draws wrong features. A filter is planned completely or rejected before any tile is touched; a rejected layer takes the row path, with one warning naming the part that failed. |
-| **Inherit, do not copy.** | Every columnar bucket extends its row bucket and replaces only the selection. Writing, sorting, deferral and indexing exist once, so a change on `main` reaches both paths. |
-| **Pay only for what is read.** | Layers, columns and rows are decoded or built on first use, and given back after the parse. |
-| **No format, renderer or shader change.** | The work is confined to the worker and the decoder; the `main` decoder reads the same tiles. |
+| Rule | Why | Checked by |
+|---|---|---|
+| **Same result as MVT** | different features drawn = a bug | style-spec filter tests; benchmarks compare features by id; fill output compared triangle by triangle |
+| **A whole filter or none** | a partly applied filter draws wrong features | planned completely or rejected before any tile; rejected → row path, one warning |
+| **Reuse the row buckets' code** | writing, sorting, deferral, indexing exist once; `main` changes reach both paths | today by inheritance; the review asks for composition ([feedback](feedback.md#3-composition-over-inheritance)) |
+| **Pay only for what is read** | most columns and rows are never drawn | layers, columns, rows built on first use, released after the parse |
+| **No format, renderer or shader change** | keeps the change in the worker and the decoder | the `main` decoder reads the same tiles |
 
 ## Trade-offs taken
 
 | Trade-off | Accepted because |
 |---|---|
-| A decoded table keeps the tile buffer alive | GL JS keeps the raw tile bytes for reloads anyway |
-| A corrupt column is reported on first read | the header walk still fails on a misaligned offset, close to its cause |
-| The earcut fill path writes about 5 % more vertices | skipping `subdividePolygon()`'s deduplication is its largest saving; triangles and outlines are the same |
-| The globe and pole tiles use `FillBucket` | the direct paths do not subdivide; globe keeps the row path's cost and exact output |
-| A fill layer without ring topology draws no outline | the triangles alone carry no ring; the bucket warns once |
-| The filter alone is slower on layers below about 50 features | a fixed cost per filter; decoding and filtering together stay below MVT at every zoom |
-| A reload decodes the columns again | about 2.6 ms per tile, against about 470 KB less retained memory per tile |
-| `decodeTile()` loses `idWithinMaxSafeInteger` | ids are numbers whenever every value is safe; the parameter only chose where rounding happens |
+| a decoded table keeps the tile buffer alive | GL JS keeps the tile bytes for reloads anyway |
+| a corrupt column surfaces on first read | the header walk still fails on a bad offset |
+| earcut fill path: about 5 % more vertices | skipping deduplication is its largest saving; same triangles and outlines |
+| globe and pole tiles use `FillBucket` | the direct paths do not subdivide |
+| fill layer without ring topology: no outline | triangles carry no ring; one warning |
+| filter alone slower on layers below about 50 features | fixed cost per filter; decode + filter stays below MVT |
+| a reload decodes the columns again | about 2.6 ms per tile vs. about 470 KB less memory per tile |
+| `decodeTile()` loses `idWithinMaxSafeInteger` | ids are numbers whenever all values are safe |
 
-## Built, measured and not kept
+## Built, measured, not kept
 
 | Idea | Why not |
 |---|---|
-| A point-free copy of `LineBucket`'s extrusion | byte-identical and 1/1.4 the allocation, but run time within noise; estimated 15-20 ms per session against about 200 copied lines to keep in step with `main` |
-| A cache of decoded layer schemas, a per-schema plan of column kinds | the metadata is about 1-3 % of the decode |
-| Skipping streams without reading their headers, one-pass stream metadata, an ASCII string fast path | the measurement did not justify them |
-| A per-tile cache of filter leaf selections and kernels | most leaves differ in their operands; lookups and copies cancelled the savings, net within noise |
+| point-free copy of `LineBucket`'s extrusion | run time within noise; about 200 copied lines to keep in step with `main` |
+| cache of decoded layer schemas | metadata is about 1-3 % of the decode |
+| skipping streams unread, one-pass stream metadata, ASCII string fast path | the measurement did not justify them |
+| per-tile cache of filter leaf selections | lookups and copies cancelled the savings |
 
 ## Open questions for maintainers
 
-From the two RFCs:
+1. **Layers without ring topology:** warning enough, or should the encoder keep ring topology for drawn
+   layers?
+2. **Splitting the row buckets:** `populate()` split into protected methods: acceptable seam in shared code?
+3. **Lazy decoding:** buffer kept alive, corrupt columns surface late: acceptable for other consumers of
+   `@maplibre/mlt`?
+4. **PR shape:** stacked PRs following the changes, fill bucket first?
 
-1. **Layers without ring topology.** A pre-tessellated fill layer without ring offsets draws no outline. Is a
-   warning enough, or should the encoder keep ring topology for drawn layers?
-2. **Splitting the row buckets.** `FillBucket`, `LineBucket` and `SymbolBucket` get `populate()` split into
-   protected methods. Is this an acceptable seam in shared code?
-3. **Lazy decoding.** A decoded table keeps the tile buffer alive, and corrupt columns surface late. Is that
-   acceptable for `@maplibre/mlt`'s other consumers?
-4. **PR shape.** Stacked PRs that follow the changes, with the fill bucket landing first in GL JS since it
-   carries the largest gain?
+Still open:
 
-Still unmeasured or unexplained: symbol `populate` on osm-bright (old evidence predates a deopt fix), resolving
-symbol text on the columns, the main-thread heap difference, and a production build without the timing log.
+- symbol `populate` on osm-bright (evidence predates a deopt fix)
+- resolving symbol text on the columns
+- main-thread heap: 2-5 MB more with MLT, cause unknown
 
-## The branch stacks
+## Branch stacks
 
-Each change is a branch in a fork, stacked on the one before, so each compare link shows only that change.
+```mermaid
+flowchart LR
+    subgraph spec["maplibre-tile-spec"]
+        direction LR
+        f1["feat1<br/>vector infrastructure"] --> f2["feat2<br/>filter engine"] --> f3["feat3<br/>lazy decoding"] --> f4["feat4<br/>adapter primitives"] --> f5["feat5<br/>decode performance"]
+    end
+    subgraph gl["maplibre-gl-js"]
+        direction LR
+        g1["gl1<br/>MLT facade"] --> g2["gl2<br/>dispatch"] --> g3["gl3<br/>populate pipeline"] --> g4["gl4<br/>fill bucket"] --> g5["gl5<br/>line bucket"] --> g6["gl6<br/>symbol bucket"] --> g7["gl7<br/>performance"]
+    end
+    f5 -.->|"@maplibre/mlt"| g1
+```
 
-| Repository | Branches, in order |
-|---|---|
-| maplibre-tile-spec | `feat1-vector-infrastructure` → `feat2-filter-engine` → `feat3-lazy-decoding` → `feat4-adapter-primitives` → `feat5-decode-performance` |
-| maplibre-gl-js | `gl1-mlt-facade` → `gl2-dispatch` → `gl3-populate-pipeline` → `gl4-fill-bucket` → `gl5-line-bucket` → `gl6-symbol-bucket` → `gl7-performance-optimization` |
-
-The compare links for every branch are on the [explainer overview](../changes/index.md#where-the-code-is).
-The RFCs: [`@maplibre/mlt`](https://github.com/maplibre/maplibre-tile-spec/issues/2010), [GL JS](https://github.com/maplibre/maplibre-gl-js/issues/8985).
+- each branch stacked on the one before; each compare link shows one change:
+  [compare links](../changes/index.md#where-the-code-is)
+- RFCs: [`@maplibre/mlt`](https://github.com/maplibre/maplibre-tile-spec/issues/2010),
+  [GL JS](https://github.com/maplibre/maplibre-gl-js/issues/8985)
