@@ -18,10 +18,12 @@
 | Part | Behaviour |
 |---|---|
 | `tile.layers` | one getter per layer; first read decodes the headers, then a data property |
-| `feature.properties` | a row view: reading 2 of 30 properties decodes 2 columns |
+| `feature.properties` | a row view, a `Proxy` from `createRowView()`: each property read decodes that one column, so reading 2 of 30 properties decodes 2 columns |
 | `loadGeometry()` | reads the vertex buffer and offsets, new `Point`s per call |
 | `releaseDecodedColumns()` | releases every read layer; unread layers untouched |
 
+- the proxy makes enumeration expensive: `{...properties}` or `Object.keys()` decodes every remaining column; row
+  code that only reads single properties stays cheap
 - `tile.layers` is `Object.create(null)`: as a plain `{}`, the getter → property switch caused thousands of V8
   deopts per session elsewhere
 
