@@ -6,7 +6,7 @@
 |---|---|---|
 | **Same result as MVT** | different features drawn = a bug | style-spec filter tests; benchmarks compare features by id; fill output compared triangle by triangle |
 | **A whole filter or none** | a partly applied filter draws wrong features | planned completely or rejected before any tile; rejected → row path, one warning |
-| **Reuse the row buckets' code** | writing, sorting, deferral, indexing exist once; `main` changes reach both paths | today by inheritance; the review asks for composition |
+| **Reuse the row buckets' code** | writing, sorting, deferral, indexing exist once; `main` changes reach both paths | by inheritance |
 | **Pay only for what is read** | most columns and rows are never drawn | layers, columns, rows built on first use, released after the parse |
 | **No format, renderer or shader change** | keeps the change in the worker and the decoder | the `main` decoder reads the same tiles |
 

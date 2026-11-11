@@ -61,8 +61,6 @@ classDiagram
     ColumnarSymbolBucket ..> columnar_populate : select
 ```
 
-*Today: inheritance. The review asks for composition.*
-
 | Bucket | Select | Write |
 |---|---|---|
 | `ColumnarFillBucket` | the filter (not narrowed to polygons: `FillBucket` fills lines too) | pre-tessellated: triangles copied, outline from ring offsets; plain: earcut on the vertex buffer; else `FillBucket.addFeature()` |
