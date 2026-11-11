@@ -1,6 +1,26 @@
 # Results
 
-## Worker time against MVT
+## In short
+
+How much worker time a format needs, as a multiple of MVT's (lower is better). Each number is worker busy time
+without garbage collection in a recorded 42 s map session (z0 to z16), replayed in Chromium, median of 10 runs:
+
+| | maptiler-basic | osm-bright | positron |
+|---|---|---|---|
+| MVT, with or without the changes | 1.00× | 1.00× | 1.00× |
+| MLT today (GL JS `main`, `@maplibre/mlt` 1.3.0) | 1.30× | 1.22× | not run |
+| MLT with the changes | 0.91× | 0.91× | 0.92× |
+| pre-tessellated MLT with the changes | 0.74× | 0.74× | 0.78× |
+
+Read: today MLT needs 22-30 % more worker time than MVT. With the changes it needs about 9 % less, and
+pre-tessellated MLT about 25 % less. MVT itself does not change (0.99-1.01×).
+
+The row "MLT today" comes from 7 November batches on a Linux laptop, the other rows from three batches on 10
+November on a Windows workstation; each ratio is formed inside one batch. The same tiles cost different
+amounts to download: plain MLT is smaller than MVT, pre-tessellated MLT larger, see
+[tile size and bandwidth](#tile-size-and-bandwidth).
+
+## In detail
 
 Worker busy time without garbage collection in a recorded 42 s session (z0 to z16), replayed in Chromium, 10
 runs per variant. Ratios of medians against MVT on `main` in the same batch, 95 % bootstrap confidence
@@ -71,6 +91,42 @@ Filtering is a small part of the worker's time: 32 ms for MLT against 37 ms for 
 batch, plus 21 ms for decoding the columns the filters read first, which MVT spends in its own decoding.
 Symbol layout and transfer cost about the same in every format, the feature index about a third less with
 the changes (50 → 33 ms).
+
+## Tile size and bandwidth
+
+The same OpenMapTiles-schema tiles of North Rhine-Westphalia in the three formats, each tile gzipped as a
+server sends it (MLT encoded with the encoder's maximum-compression settings):
+
+| | MVT | plain MLT | pre-tessellated MLT |
+|---|---|---|---|
+| the tiles one replay of the 42 s session loads (the 191 inside the tileset's bounds, z0-16) | 10.5 MB | 8.7 MB (0.83×) | 11.4 MB (1.09×) |
+| mean tile in that session | 55.8 kB | 46.4 kB | 60.6 kB |
+| the whole tileset, z0-16 (352,409 tiles) | 1.62 GB | 1.47 GB (0.91×) | 1.76 GB (1.09×) |
+| mean tile in the tileset | 4.6 kB | 4.2 kB | 5.0 kB |
+
+Plain MLT is 4-14 % smaller than MVT from z6 up (and up to 7 % larger at z0-z4). Pre-tessellated MLT carries the
+triangles' index streams on top: 2-2.6 times MVT's size at z0-z3, 23-40 % more at z6-z13, and 1-12 % more at
+z14-z16.
+
+**Download and worker time together.** A simple model adds the time to download the session's tiles at a
+given bandwidth to the worker time to parse them (busy time including GC, maptiler-basic batch: MVT 1.56 s,
+MLT 1.42 s, pre-tessellated MLT 1.14 s):
+
+| Bandwidth | MVT | plain MLT | pre-tessellated MLT |
+|---|---|---|---|
+| low, 1.6 Mbit/s (Chrome's "Slow 4G" preset) | 53.9 s | **44.9 s** | 58.0 s |
+| average, 10 Mbit/s | 9.94 s | **8.38 s** | 10.24 s |
+| high, 100 Mbit/s | 2.39 s | 2.11 s | **2.05 s** |
+
+- **Plain MLT wins at every bandwidth**: fewer bytes and less worker time.
+- **Pre-tessellated MLT** saves worker time but costs bytes. It beats MVT above about 17 Mbit/s and plain MLT
+  above about 77 Mbit/s. On a device whose CPU is 4× slower than the workstation (Chrome's usual CPU throttle
+  for a mid-range phone, assuming the worker time scales with it) the break-even points fall to about 4 and
+  19 Mbit/s.
+
+The model is a sum, not a time to a finished map: downloads run in parallel and overlap with parsing, and a
+tile already in the browser cache costs no download. It shows the trade-off; it does not predict a user's
+wait.
 
 ## What it costs in size
 
