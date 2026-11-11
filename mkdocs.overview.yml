@@ -67,7 +67,7 @@ extra:
     overview: https://salkin975.github.io/Thesis-docs/overview/
 
 nav:
-  - In five minutes: index.md
+  - Overview: index.md
   - How a tile is parsed: architecture.md
   - "@maplibre/mlt": mlt-package.md
   - MapLibre GL JS: gl-js.md

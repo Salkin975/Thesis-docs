@@ -1,4 +1,4 @@
-# Columnar MLT in MapLibre, in five minutes
+# Columnar MLT in MapLibre: overview
 
 ## The problem
 
