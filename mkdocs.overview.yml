@@ -72,5 +72,3 @@ nav:
   - "@maplibre/mlt": mlt-package.md
   - MapLibre GL JS: gl-js.md
   - Results: results.md
-  - Decisions and open questions: decisions.md
-  - The changes, page by page: https://salkin975.github.io/Thesis-docs/
