@@ -73,7 +73,6 @@ Details, tile sizes and bandwidth: [results](results.md).
 | [MapLibre GL JS](gl-js.md) | facade, dispatch, buckets, touched files |
 | [Results](results.md) | time, memory, tile size, bandwidth, bundle size, limits |
 | [Decisions and open questions](decisions.md) | rules, trade-offs, rejected ideas, open questions, branches |
-| [Review feedback](feedback.md) | the answers to the first review, with class and sequence diagrams |
 
 - one explainer page per change: [all explainer pages](../changes/index.md)
 - RFCs: [`@maplibre/mlt`](https://github.com/maplibre/maplibre-tile-spec/issues/2010),

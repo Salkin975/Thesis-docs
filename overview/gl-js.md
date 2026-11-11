@@ -61,7 +61,7 @@ classDiagram
     ColumnarSymbolBucket ..> columnar_populate : select
 ```
 
-*Today: inheritance. The review asks for composition; see [review feedback](feedback.md#3-composition-over-inheritance).*
+*Today: inheritance. The review asks for composition.*
 
 | Bucket | Select | Write |
 |---|---|---|
