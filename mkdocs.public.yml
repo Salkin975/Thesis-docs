@@ -1,0 +1,149 @@
+# The explainer pages, one per change: changes/.
+# Published at the root of the GitHub Pages site by .github/workflows/pages.yml.
+# Preview: mkdocs serve -f mkdocs.public.yml
+site_name: Columnar MLT in MapLibre GL JS
+site_description: What the thesis changes in @maplibre/mlt and MapLibre GL JS, why, and what each change is worth
+site_url: https://salkin975.github.io/Thesis-docs/
+repo_url: https://github.com/Salkin975/Thesis-docs
+repo_name: Salkin975/Thesis-docs
+edit_uri: ""
+
+docs_dir: changes
+site_dir: site
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+# Links to the other site (overview/ <-> changes/) point to its published pages;
+# any other link that leaves docs_dir fails the strict build.
+hooks:
+  - hooks/site_links.py
+
+extra:
+  sites:
+    changes: https://salkin975.github.io/Thesis-docs/
+    overview: https://salkin975.github.io/Thesis-docs/overview/
+
+nav:
+  - Overview: index.md
+  - The architecture in a few pages: https://salkin975.github.io/Thesis-docs/overview/
+  - "@maplibre/mlt":
+      - 1. Selection vectors: 01-selection-vectors.md
+      - 2. Filter engine: 02-filter-engine.md
+      - 3. Lazy decoding: 03-lazy-decoding.md
+      - 4. Adapter primitives: 04-adapter-primitives.md
+      - 5. Decode performance: 05-decode-performance.md
+  - MapLibre GL JS:
+      - 6. MLT facade: 06-mlt-facade.md
+      - 7. Dispatch and hand-off: 07-dispatch.md
+      - 8. Shared populate pipeline: 08-populate-pipeline.md
+      - 9. Fill bucket: 09-fill-bucket.md
+      - 10. Line bucket: 10-line-bucket.md
+      - 11. Symbol bucket: 11-symbol-bucket.md
+      - 12. Worker performance: 12-worker-performance.md
+  - Method:
+      - 13. How it was measured: 13-measuring.md
+  - Benchmarks:
+      - Overview: benchmarks/index.md
+      - Filter benchmark: benchmarks/filter-bench.md
+      - "Hardware, 10 November": benchmarks/session-trace/2026-11-10-hardware.md
+      - Session traces:
+          - "2026-11-10 14:16 · maptiler-basic": benchmarks/session-trace/20261110-141627/report.md
+          - "2026-11-10 12:11 · positron": benchmarks/session-trace/20261110-121157/report.md
+          - "2026-11-10 10:52 · osm-bright": benchmarks/session-trace/20261110-105247/report.md
+          - "toner": benchmarks/session-trace/toner/report.md
+          - "kernel-coverage": benchmarks/session-trace/kernel-coverage/report.md
+          - "2026-11-08 16:30 · maptiler-basic": benchmarks/session-trace/20261108-163052/report.md
+          - "2026-11-07 17:15 · maptiler-basic": benchmarks/session-trace/20261107-171557/report.md
+          - "2026-11-07 15:46 · maptiler-basic": benchmarks/session-trace/20261107-154620/report.md
+          - "2026-11-07 14:29 · positron": benchmarks/session-trace/20261107-142945/report.md
+          - "2026-11-07 13:56 · maptiler-basic": benchmarks/session-trace/20261107-135632/report.md
+          - "2026-11-07 13:19 · osm-bright": benchmarks/session-trace/20261107-131921/report.md
+          - "2026-11-07 12:54 · maptiler-basic": benchmarks/session-trace/20261107-125455/report.md
+          - "2026-11-07 12:37 · positron": benchmarks/session-trace/20261107-123741/report.md
+          - "2026-11-07 12:16 · osm-bright": benchmarks/session-trace/20261107-121656/report.md
+          - "2026-11-06 19:51 · osm-bright": benchmarks/session-trace/20261106-195111/report.md
+          - "2026-11-06 16:52 · osm-bright": benchmarks/session-trace/20261106-165233/report.md
+          - "2026-11-06 16:10 · osm-bright": benchmarks/session-trace/20261106-161007/report.md
+          - "2026-11-06 12:02 · osm-bright": benchmarks/session-trace/20261106-120229/report.md
+          - "2026-11-06 11:54 · osm-bright": benchmarks/session-trace/20261106-115437/report.md
+          - "2026-11-06 10:38 · osm-bright": benchmarks/session-trace/20261106-103822/report.md
+          - "2026-11-06 10:32 · osm-bright": benchmarks/session-trace/20261106-103225/report.md
+          - "2026-11-06 10:13 · osm-bright": benchmarks/session-trace/20261106-101306/report.md
+          - "2026-11-03 09:34 · osm-bright": benchmarks/session-trace/20261103-093411/report.md
+          - "2026-11-03 09:19 · osm-bright": benchmarks/session-trace/20261103-091957/report.md
+          - "2026-11-02 13:00 · osm-bright": benchmarks/session-trace/20261102-130002/report.md
+          - "2026-10-29 14:48 · maptiler-basic": benchmarks/session-trace/20261029-144810/report.md
+          - "2026-10-28 14:30 · osm-bright": benchmarks/session-trace/20261028-143057/report.md
+          - "2026-10-28 08:57 · osm-bright": benchmarks/session-trace/20261028-085720/report.md
+          - "2026-10-28 07:56 · osm-bright": benchmarks/session-trace/20261028-075655-osm-bright/report.md
+          - "2026-10-28 07:29 · maptiler-basic": benchmarks/session-trace/20261028-072929-maptiler-basic/report.md
+          - "2026-10-27 15:18 · splits": benchmarks/session-trace/20261027-151854-splits/report.md
+          - "2026-10-27 14:51 · maptiler-basic": benchmarks/session-trace/20261027-145149/report.md
+          - "2026-10-27 14:31 · maptiler-basic": benchmarks/session-trace/20261027-143159/report.md
+          - "2026-10-27 14:22 · maptiler-basic": benchmarks/session-trace/20261027-142219/report.md
+          - "2026-10-27 08:14 · maptiler-basic": benchmarks/session-trace/20261027-081430/report.md
+          - "2026-10-27 06:46 · maptiler-basic": benchmarks/session-trace/20261027-064651/report.md
+          - "2026-10-23 11:09 · positron": benchmarks/session-trace/20261023-110933-positron/report.md
+          - "2026-10-23 09:08 · maptiler-basic": benchmarks/session-trace/20261023-090811/report.md
+          - "2026-10-23 07:42 · maptiler-basic": benchmarks/session-trace/20261023-074205/report.md
+          - "2026-10-23 06:59 · maptiler-basic": benchmarks/session-trace/20261023-065948/report.md
+          - "2026-10-22 15:32 · kernel-coverage": benchmarks/session-trace/20261022-153226/report.md
+          - "2026-10-22 14:49 · maptiler-basic": benchmarks/session-trace/20261022-144914/report.md
+          - "2026-10-22 14:40 · maptiler-basic": benchmarks/session-trace/20261022-144000/report.md
+          - "2026-10-22 14:11 · e2e": benchmarks/session-trace/20261022-141122-e2e/report.md
+          - "2026-10-22 13:53 · maptiler-basic": benchmarks/session-trace/20261022-135340/report.md
+          - "2026-10-22 12:02 · osm-bright": benchmarks/session-trace/20261022-120230/report.md
+          - "2026-10-22 10:16 · maptiler-basic": benchmarks/session-trace/20261022-101613/report.md
+          - "2026-10-22 09:53 · earcut-path": benchmarks/session-trace/20261022-095301-earcut-path/report.md
+          - "2026-10-22 08:30 · osm-bright": benchmarks/session-trace/20261022-083025/report.md
+          - "2026-10-22 07:21 · e2e": benchmarks/session-trace/20261022-072145-e2e/report.md
+          - "2026-10-21 16:49 · probe-idle-pcores": benchmarks/session-trace/20261021-164917-probe-idle-pcores/report.md
+          - "2026-10-21 16:43 · probe-loaded": benchmarks/session-trace/20261021-164359-probe-loaded/report.md
+          - "2026-10-21 16:30 · probe-idle": benchmarks/session-trace/20261021-163036-probe-idle/report.md
+          - "2026-10-21 15:36 · maptiler-basic": benchmarks/session-trace/20261021-153607/report.md
+          - "2026-10-21 14:45 · builds-check": benchmarks/session-trace/20261021-144539-builds-check/report.md
+          - "2026-10-19 15:50 · maptiler-basic": benchmarks/session-trace/20261019-155038/report.md
+          - "2026-10-19 15:32 · maptiler-basic": benchmarks/session-trace/20261019-153249/report.md
+          - "2026-10-19 14:23 · maptiler-basic": benchmarks/session-trace/20261019-142304/report.md
+          - "2026-10-19 12:42 · maptiler-basic": benchmarks/session-trace/20261019-124231/report.md
