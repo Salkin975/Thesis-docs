@@ -7,28 +7,32 @@ only on that layer: an MLT tile, and a filter the engine can plan at the current
 cannot be planned falls back on its own and does not take the other layers with it. The worker then hands
 each bucket the input it accepts: the MLT layer for a columnar bucket, the usual row list for a row bucket.
 
-## Choosing the bucket
+## Deciding in the constructor
 
-Each style layer's `createBucket()` asks the filter engine:
+`createBucket()` builds the same bucket as for MVT: a `FillBucket`, `LineBucket` or `SymbolBucket`. The bucket
+decides for itself, in its constructor, whether it populates from columns:
 
 ```ts
-createBucket(parameters: BucketParameters<any>): FillBucket {
-    return isColumnarBucketSupported(parameters.encoding, this.filter, parameters.zoom, this.id)
-        ? new ColumnarFillBucket(parameters)
-        : new FillBucket(parameters);
+this.isColumnar = isColumnarBucket(options);
+```
+
+```ts
+export function isColumnarBucket({encoding, layers, zoom}: BucketParameters<TypedStyleLayer>): boolean {
+    return isColumnarBucketSupported(encoding, layers[0].filter, zoom, layers[0].id);
 }
 ```
 
 `isColumnarBucketSupported()` answers from the cached plan of [page 2](02-filter-engine.md), so the question
-costs a lookup after the first tile. Fill, line and symbol layers have a columnar bucket. Circle, heatmap and
-fill-extrusion layers have none and always take the row path.
+costs a lookup after the first tile. Fill, line and symbol layers have a columnar path. Circle, heatmap and
+fill-extrusion buckets never set `isColumnar` and always take the row path.
 
 Three additions make the hand-off possible:
 
 - `BucketParameters.encoding` says how the **parsed** source layer is encoded: `'mlt'` if it has a feature
   table, `'mvt'` otherwise.
-- `Bucket.isColumnar` marks a bucket that reads columns.
-- `Bucket.populate()` accepts either the row list or an `MLTVectorTileLayer`.
+- `Bucket.isColumnar` marks a bucket that reads columns. The three buckets above are its only setters.
+- `Bucket.populate()` accepts either the row list or an `MLTVectorTileLayer`. It is the input that selects the
+  path: a bucket given a row list populates from the rows, whatever `isColumnar` says.
 
 ## Handing over the input
 
@@ -36,7 +40,7 @@ Three additions make the hand-off possible:
 const mltLayer = isMLTVectorTileLayer(sourceLayer) ? sourceLayer : undefined;
 let mltRows: IndexedFeature[] | undefined;
 // … per style layer of this source layer:
-// MVT: the row list, as before
+// MVT: the row list
 let populateFeatures: IndexedFeature[] | MLTVectorTileLayer = features;
 if (mltLayer) {
     populateFeatures = bucket.isColumnar ?
@@ -51,21 +55,37 @@ source layer is columnar it is never built, and if several row buckets share the
 list. The `bucket.isColumnar` test stays at the call site, because a layer whose filter could not be planned
 gets a row bucket although its tile is MLT.
 
-## The overzoom fix
+## Pre-tessellated layers without rings
 
-`encoding` used to describe the request, not the parsed tile, and on overzoom the two differ:
+A pre-tessellated source layer can be stored without ring topology: it holds triangles only. Its row view has
+no rings to give, only the triangles, each as a ring of its own, so a row bucket would draw the outline of
+every triangle: a line layer would draw them as lines.
+
+Only a columnar bucket can draw such a layer correctly. So `parse()` skips every style layer over it that no
+columnar bucket draws, with one warning per layer:
+
+- fill, line and symbol layers whose filter cannot be planned on the columns, checked before their bucket is
+  created, so the constructor's own warning does not fire as well,
+- every circle, heatmap and fill-extrusion layer.
+
+A line layer whose filter can be planned is skipped as well, by the columnar line path, because triangles hold
+no line. A pre-tessellated layer stored with rings keeps the row path, which reads its real rings.
+
+## The encoding of the parsed layer
+
+`encoding` describes the parsed layer, not the request, and on overzoom the two differ:
 
 | Step | State |
 |---|---|
-| `new WorkerTile(params)` | `encoding = 'mlt'` from the request |
+| `new WorkerTile(params)` | the request says MLT |
 | `loadVectorTile()` | a real `MLTVectorTile` |
-| overzoom | the tile is cut and **re-encoded as MVT**, `encoding` stays `'mlt'` |
-| `createBucket()` | sees `'mlt'`, builds a **columnar** bucket |
+| overzoom | the tile is cut and **re-encoded as MVT** |
+| `parse()` | its layers have no feature table, so `encoding` is `'mvt'` |
+| bucket constructor | `isColumnar` is false |
 | `bucket.populate()` | gets the row list |
 
-Rendering stayed correct, because a columnar bucket given rows falls back to its parent's `populate()`, but
-the columnar path was silently lost for an MLT source shown past its maximum zoom. `encoding` is now set from the
-parsed layer, which makes the rule hold: a columnar bucket always gets an MLT layer.
+Taken from the request, `encoding` would be `'mlt'` for an overzoomed tile, and its buckets would be columnar
+yet receive rows. Taken from the layer, the rule holds: a columnar bucket always gets an MLT layer.
 
 ## Giving the columns back
 
@@ -92,7 +112,13 @@ the worker's garbage collections falls from 1,627 to 1,059 MB ([overview](index.
 
 ## In the code
 
-Branch [`gl2-dispatch`](https://github.com/Salkin975/maplibre-gl-js/compare/gl1-mlt-facade...gl2-dispatch)
-in maplibre-gl-js: `src/data/bucket.ts`, `src/source/worker_tile.ts`, and `indexedFeatures()` in
-`src/source/vector_tile_mlt.ts`. Tested in `src/source/worker_tile_dispatch.test.ts` on a real MLT tile. The
-`createBucket()` of each style layer lands with its bucket (pages 9 to 11).
+Branch [`gl8-review-feedback`](https://github.com/Salkin975/maplibre-gl-js/tree/gl8-review-feedback)
+in maplibre-gl-js:
+
+- `src/data/bucket.ts`: `BucketParameters.encoding`, `Bucket.isColumnar` and the `populate()` signature.
+- `src/data/bucket/columnar/columnar_populate.ts`: `isColumnarBucket()`; it is called by the constructors of
+  `src/data/bucket/fill_bucket.ts`, `line_bucket.ts` and `symbol_bucket.ts`.
+- `src/source/worker_tile.ts`: the hand-over, the skip rule and the release; `indexedFeatures()` in
+  `src/source/vector_tile_mlt.ts`.
+- Tested in `src/source/worker_tile_dispatch.test.ts` on a real MLT tile, and for each bucket's decision in
+  `columnar_fill.test.ts`, `columnar_line.test.ts` and `columnar_symbol.test.ts`.

@@ -8,10 +8,16 @@ Three benchmarks answer different questions. Each number on these pages names th
 |---|---|---|---|
 | filter benchmark | Node | one tile from its unzipped bytes to the point where GL JS would write vertices: decoding, every style-layer filter once, the columns the bucket reads | the tile-spec changes (pages 1 to 5), the [`@maplibre/mlt` RFC](https://github.com/maplibre/maplibre-tile-spec/issues/2010) |
 | session traces | Chromium | a recorded camera path replayed with tracing on: the worker's busy time, split by category and function from its CPU samples, plus heap and GC | the GL JS changes (pages 6 to 12), the [GL JS RFC](https://github.com/maplibre/maplibre-gl-js/issues/8985) |
-| NRW parse benchmark | Node (vitest) | twelve z12 tiles of Cologne parsed through `WorkerTile.parse()`, summed by bucket and phase | before and after a single GL JS change |
+| NRW parse benchmark (on `gl7p`, `gl8p`) | Node (vitest) | twelve z12 tiles of Cologne parsed through `WorkerTile.parse()`, summed by bucket and phase | before and after a single GL JS change |
 
 Alongside them: a decode benchmark with an A/B runner that compares the working tree against the last commit
 in alternating pairs of processes, and Node A/B scripts for single tile-spec changes.
+
+The GL JS side of the tooling is not part of the changes proposed to GL JS. The worker timing log, the NRW parse
+benchmark and the end-to-end benchmark of MVT against MLT styles are code on the measurement branches
+[`gl7p`](https://github.com/Salkin975/maplibre-gl-js/tree/gl7p) and
+[`gl8p`](https://github.com/Salkin975/maplibre-gl-js/tree/gl8p), which exist only to measure ([page 12](12-worker-performance.md)).
+The session-trace tool is in the [benchmarking repository](https://github.com/Salkin975/Maplibre-benchmarking).
 
 ## Three formats on the same tiles
 
@@ -50,15 +56,15 @@ on AC power with the performance CPU governor.
 | every filter job keeps the same features in MVT, MLT `main` and MLT, by feature id | filter benchmark, outside the clock |
 | the style spec's filter test suites, ported, against the columnar engine | `mvtParity.spec.ts` in the tile spec |
 | fill triangles, outline edges and index boxes equal `FillBucket`'s: 53 tiles, 166 polygon layers, 442,779 triangles | one-off script over NRW tiles |
-| fill on the globe and in pole tiles byte-identical to `FillBucket` | `columnar_fill_bucket.test.ts` |
-| the same symbol features, glyphs and icons from `ColumnarSymbolBucket` and `SymbolBucket` | `columnar_symbol_bucket.test.ts` |
+| fill on the globe and in pole tiles byte-identical to the row path | `columnar_fill.test.ts` |
+| the same symbol features, glyphs and icons from the columnar and the row path | `columnar_symbol.test.ts` |
 | every feature of real tiles reads the same id, type, geometry and properties lazily as eagerly | `vector_tile_mlt.test.ts` |
 
 ## Limits
 
-- **The timing log was on.** The GL JS session-trace batches ran with the worker timing log switched on. It
-  costs about 1.5-3 % of worker time in every format. A batch with it off, on a production build, has not been
-  run yet.
+- **The timing log was on.** The GL JS session-trace batches ran on a build with the worker timing log
+  (code on `gl7p` and `gl8p`) switched on. It costs about 1.5-3 % of worker time in every format. A batch
+  with it off, on a production build, has not been run yet.
 - **One region.** The tiles are OpenMapTiles-style tiles of North Rhine-Westphalia. Other schemas and regions
   were not measured.
 - **Small layers are slower to filter.** The columnar filter has a fixed cost per filter, so on layers of

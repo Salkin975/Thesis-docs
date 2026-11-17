@@ -10,6 +10,10 @@ worker time, and the large and cheap ones removed, each change judged by a new b
 
 At the start, on a 37 s osm-bright session, plain MLT cost 1.17× the worker time of MVT.
 
+!!! note "Where the measuring code lives"
+    The worker timing log and the parse benchmarks used here are not part of the GL JS changes. They live on
+    two measurement branches, `gl7p` and `gl8p`, described under [In the code](#in-the-code).
+
 ## What was found, and what was done
 
 | Found | Cost | Done |
@@ -95,9 +99,17 @@ This batch is older than the numbers on the [overview](index.md), which come fro
 
 ## In the code
 
-Branch [`gl7-performance-optimization`](https://github.com/Salkin975/maplibre-gl-js/compare/gl6-symbol-bucket...gl7-performance-optimization)
-in maplibre-gl-js: the fix in `src/source/vector_tile_mlt.ts`, the pipeline and line-bucket changes in
-`src/data/bucket/columnar/`, the worker timing log in `src/source/worker_timing.ts` (off by default), and the
-NRW parse benchmark in `src/source/worker_tile_nrw.bench.ts`. The fill work lives on `gl4-fill-bucket`, the
+The measuring code is not on the stack the changes are proposed on. It is on two parallel branches in
+maplibre-gl-js that exist only to measure:
+
+| Branch | Is | Adds |
+|---|---|---|
+| [`gl7p`](https://github.com/Salkin975/maplibre-gl-js/tree/gl7p) | `gl7-performance-optimization` plus the measuring code | the worker timing log `src/source/worker_timing.ts` with its hooks in the buckets and in `WorkerTile.parse()`, the NRW parse benchmark `src/source/worker_tile_nrw.bench.ts`, and the end-to-end benchmark of MVT against MLT styles in `test/bench/e2e/` |
+| [`gl8p`](https://github.com/Salkin975/maplibre-gl-js/tree/gl8p) | `gl8-review-feedback` plus the same, hooked into the columnar populate functions | the same files |
+
+The fixes the measurements led to are on the stack itself: the deoptimization fix in `src/source/vector_tile_mlt.ts` and
+the pipeline and line changes in `src/data/bucket/columnar/` on
+[`gl7-performance-optimization`](https://github.com/Salkin975/maplibre-gl-js/tree/gl7-performance-optimization), the
+fill work on the stack tip, [`gl8-review-feedback`](https://github.com/Salkin975/maplibre-gl-js/tree/gl8-review-feedback), and the
 tile-spec changes on `feat5-decode-performance`. The session trace tool is in the
 [benchmarking repository](https://github.com/Salkin975/Maplibre-benchmarking).

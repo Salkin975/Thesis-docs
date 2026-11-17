@@ -63,8 +63,8 @@ flowchart TD
 - A filter is planned once and then evaluated per tile as a scan over typed columns. Its result, a
   [selection vector](01-selection-vectors.md), says which rows survive, and nothing else is built for the rows
   that do not.
-- Writing vertices, sorting and the spatial index stay in the row buckets. The columnar buckets inherit from
-  them and call the same methods, so both paths draw the same features.
+- Writing vertices, sorting and the spatial index stay in the row buckets' own methods. The columnar populate
+  functions call them, so both paths draw the same features.
 
 ## One layer, end to end
 
@@ -79,8 +79,8 @@ A line layer of a zoom-14 MLT tile with eight features and the columns `id`, geo
 ```
 1 wrap      scanLayerBlocks()            names and byte ranges, nothing decoded
 2 decode    first read of the layer      column headers walked, offsets kept
-3 dispatch  isColumnarBucketSupported()  filter plannable at z14
-                                         → ColumnarLineBucket, plan cached
+3 dispatch  isColumnarBucket()           filter plannable at z14
+                                         → LineBucket.isColumnar, plan cached
 4 select    class == 'primary'           dictionary, once per value  {0,2,3,5,7}
             any: lanes > 2               Int32, its copy of the 5    {2,5,7}
                  surface == 'paved'      dictionary, its copy        {0,2,7}
@@ -106,8 +106,9 @@ The filter engine page walks through step 4 in detail ([filter engine](02-filter
 - **A whole filter or none.** A filter is planned completely or rejected before any tile is touched. A
   rejected layer takes the existing row path, with one warning per filter naming the part that failed. The
   other layers of the tile are not affected.
-- **Inherit, do not copy.** Every columnar bucket extends its row bucket and overrides only the selection. The
-  row buckets' `populate()` is split into protected methods so both paths call the same writing code.
+- **Share, do not copy.** The three buckets populate from either the row list or an MLT layer. A layer is
+  handled by a standalone function that replaces only the selection and calls the bucket's own methods for
+  writing, so both paths run the same code.
 - **Pay only for what is read.** Layers, columns and rows are decoded or built on first use.
 - **No format, renderer or shader change.** The current `main` decoder reads the same tiles, and
   `getFeatures()` returns the same result as before.
@@ -138,8 +139,10 @@ The filter engine page walks through step 4 in detail ([filter engine](02-filter
 
 ## Where the code is
 
-Every change is a branch in a fork. The branches form one stack per repository, each on the one before it,
-so each link below shows only that change.
+Every change is a branch in a fork. The branches form one stack per repository, each on the one before it;
+the link of pages 1 to 6 shows only that change. In maplibre-gl-js the dispatch and the three buckets (pages 7 to
+11) are on the tip of the stack, and the measuring code (pages 12 and 13) is on two parallel branches that exist
+only to measure.
 
 | Page | Repository | Branch |
 |---|---|---|
@@ -149,12 +152,8 @@ so each link below shows only that change.
 | 4 | maplibre-tile-spec | [`feat4-adapter-primitives`](https://github.com/Salkin975/maplibre-tile-spec/compare/feat3-lazy-decoding...feat4-adapter-primitives) |
 | 5 | maplibre-tile-spec | [`feat5-decode-performance`](https://github.com/Salkin975/maplibre-tile-spec/compare/feat4-adapter-primitives...feat5-decode-performance) |
 | 6 | maplibre-gl-js | [`gl1-mlt-facade`](https://github.com/Salkin975/maplibre-gl-js/compare/main...gl1-mlt-facade) |
-| 7 | maplibre-gl-js | [`gl2-dispatch`](https://github.com/Salkin975/maplibre-gl-js/compare/gl1-mlt-facade...gl2-dispatch) |
-| 8 | maplibre-gl-js | [`gl3-populate-pipeline`](https://github.com/Salkin975/maplibre-gl-js/compare/gl2-dispatch...gl3-populate-pipeline) |
-| 9 | maplibre-gl-js | [`gl4-fill-bucket`](https://github.com/Salkin975/maplibre-gl-js/compare/gl3-populate-pipeline...gl4-fill-bucket) |
-| 10 | maplibre-gl-js | [`gl5-line-bucket`](https://github.com/Salkin975/maplibre-gl-js/compare/gl4-fill-bucket...gl5-line-bucket) |
-| 11 | maplibre-gl-js | [`gl6-symbol-bucket`](https://github.com/Salkin975/maplibre-gl-js/compare/gl5-line-bucket...gl6-symbol-bucket) |
-| 12 | maplibre-gl-js | [`gl7-performance-optimization`](https://github.com/Salkin975/maplibre-gl-js/compare/gl6-symbol-bucket...gl7-performance-optimization) |
+| 7 to 11 | maplibre-gl-js | [`gl8-review-feedback`](https://github.com/Salkin975/maplibre-gl-js/tree/gl8-review-feedback) |
+| 12, 13 | maplibre-gl-js | [`gl7p`](https://github.com/Salkin975/maplibre-gl-js/tree/gl7p) and [`gl8p`](https://github.com/Salkin975/maplibre-gl-js/tree/gl8p), the measurement branches; the fixes are on [`gl7-performance-optimization`](https://github.com/Salkin975/maplibre-gl-js/tree/gl7-performance-optimization) |
 
 The full proposals are the two RFCs, [`@maplibre/mlt`](https://github.com/maplibre/maplibre-tile-spec/issues/2010) and
 [GL JS](https://github.com/maplibre/maplibre-gl-js/issues/8985).
